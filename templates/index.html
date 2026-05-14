@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}Info-Tech | Higher Education CRM Maturity Assessment{% endblock %}
+{% block content %}
+<header class="brand-hero">
+  <div class="container hero-card">
+    <div class="hero-main">
+      <div class="brand-lockup">
+        <img src="{{ bootstrap.brand.logo_path }}" alt="Info-Tech Research Group" class="brand-logo" />
+        <div>
+          <div class="eyebrow">Hosted Multi-Step Assessment Experience</div>
+          <h1>Higher Education CRM Maturity Assessment</h1>
+          <p class="hero-copy">A branded, deployment-ready self-assessment designed for colleges and universities to evaluate CRM maturity across strategy, governance, lifecycle orchestration, data, technology, analytics, adoption, compliance, and value realization.</p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <div class="hero-stat">
+          <strong>10</strong>
+          <span>domains</span>
+        </div>
+        <div class="hero-stat">
+          <strong>5</strong>
+          <span>maturity levels</span>
+        </div>
+        <div class="hero-stat">
+          <strong>PDF</strong>
+          <span>scored report</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-note">
+      <div class="note-card">
+        <h3>What’s new in this version</h3>
+        <ul>
+          <li>Info-Tech branding and color standards</li>
+          <li>Backend draft save and submission storage</li>
+          <li>Admin dashboard for consultant review</li>
+          <li>Downloadable scored PDF report</li>
+          <li>Consultant-facing recommendations tied to low-scoring domains</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container assessment-layout">
+  <section class="wizard-shell">
+    <div class="stepper-card">
+      <div class="stepper-header">
+        <div>
+          <div class="eyebrow">Assessment workflow</div>
+          <h2>Institution self-assessment wizard</h2>
+        </div>
+        <div class="save-state" id="saveState">Ready to begin</div>
+      </div>
+      <div id="stepper" class="stepper"></div>
+    </div>
+
+    <div class="wizard-card">
+      <div class="wizard-topbar">
+        <div>
+          <div class="eyebrow">Current step</div>
+          <h3 id="stepTitle">Institutional Context</h3>
+        </div>
+        <div class="progress-pill"><span id="progressText">Step 1 of 5</span></div>
+      </div>
+      <div id="wizardBody"></div>
+      <div class="wizard-actions">
+        <button id="prevBtn" class="btn btn-ghost" type="button">Previous</button>
+        <div class="wizard-actions-right">
+          <button id="saveBtn" class="btn btn-secondary" type="button">Save draft</button>
+          <button id="nextBtn" class="btn btn-primary" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="sidebar-stack">
+    <section class="sidebar-card">
+      <div class="eyebrow">Assessment summary</div>
+      <h3>Progress and readiness</h3>
+      <div class="metric-grid">
+        <div class="metric-box">
+          <strong id="completionPct">0%</strong>
+          <span>completion</span>
+        </div>
+        <div class="metric-box">
+          <strong id="overallScore">0.00</strong>
+          <span>overall score</span>
+        </div>
+      </div>
+      <div class="maturity-chip" id="overallLabel">Ad Hoc</div>
+      <p id="overallNarrative" class="muted compact">Complete the assessment to generate an evidence-based maturity profile.</p>
+    </section>
+
+    <section class="sidebar-card">
+      <div class="eyebrow">Consultant view</div>
+      <h3>Low-score focus areas</h3>
+      <div id="consultantRecommendations" class="consultant-list empty-state">Complete the assessment to surface engagement recommendations.</div>
+    </section>
+
+    <section class="sidebar-card">
+      <div class="eyebrow">Export</div>
+      <h3>Saved output</h3>
+      <p class="muted compact">After submission, the platform generates a downloadable PDF report for client delivery or workshop readout.</p>
+      <a id="reportLink" class="btn btn-primary btn-block disabled" href="#" target="_blank" rel="noopener">Download scored PDF</a>
+      <a class="btn btn-ghost btn-block" href="/admin">Admin dashboard</a>
+    </section>
+  </aside>
+</main>
+
+<script id="bootstrap-data" type="application/json">{{ bootstrap | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

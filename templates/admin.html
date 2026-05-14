@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}Info-Tech | CRM Assessment Admin{% endblock %}
+{% block content %}
+<header class="brand-hero compact-header">
+  <div class="container hero-card admin-hero">
+    <div class="brand-lockup admin-lockup">
+      <img src="{{ brand.logo_path }}" alt="Info-Tech Research Group" class="brand-logo" />
+      <div>
+        <div class="eyebrow">Admin controls and backend review</div>
+        <h1>Assessment Administration</h1>
+        <p class="hero-copy">Review submitted and draft assessments, inspect domain-level scores, and identify consultant engagement opportunities.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container admin-layout">
+  {% if not authorized %}
+    <section class="wizard-card login-card">
+      <div class="eyebrow">Restricted area</div>
+      <h2>Enter admin access code</h2>
+      <p class="muted">This demo uses a simple passcode gate. For production deployment, replace this with SSO or your preferred authentication provider.</p>
+      <form method="get" action="/admin" class="login-form">
+        <label for="code">Admin code</label>
+        <input id="code" name="code" type="text" placeholder="Enter admin code" />
+        <button class="btn btn-primary" type="submit">Open dashboard</button>
+      </form>
+      <p class="tiny muted">Default demo code: <strong>{{ expected_code }}</strong></p>
+    </section>
+  {% else %}
+    <section class="admin-grid">
+      <div class="sidebar-card">
+        <div class="eyebrow">Assessment records</div>
+        <h3>{{ assessments|length }} saved assessments</h3>
+        <div class="records-list">
+          {% for item in assessments %}
+            <a class="record-card {% if selected and item.token == selected.token %}active{% endif %}" href="/admin?code={{ admin_code }}&token={{ item.token }}">
+              <div class="record-top">
+                <strong>{{ item.institution_name }}</strong>
+                <span class="status status-{{ item.status }}">{{ item.status }}</span>
+              </div>
+              <div class="record-meta">{{ item.institution_type }} · {{ '%.2f'|format(item.overall_score or 0) }} / 5.00 · {{ item.overall_label or 'N/A' }}</div>
+              <div class="record-meta">Updated {{ item.updated_at }}</div>
+            </a>
+          {% else %}
+            <div class="empty-state">No assessment records yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="wizard-card">
+        {% if selected %}
+          <div class="wizard-topbar admin-topbar">
+            <div>
+              <div class="eyebrow">Selected institution</div>
+              <h2>{{ selected.payload.context.institutionName or 'Unnamed institution' }}</h2>
+            </div>
+            <a class="btn btn-primary" href="/report/{{ selected.token }}.pdf" target="_blank" rel="noopener">Download PDF</a>
+          </div>
+
+          <div class="admin-summary-grid">
+            <div class="metric-box large">
+              <strong>{{ '%.2f'|format(selected.results.overall_score) }}</strong>
+              <span>overall score</span>
+            </div>
+            <div class="metric-box large">
+              <strong>{{ selected.results.overall_label }}</strong>
+              <span>maturity band</span>
+            </div>
+            <div class="metric-box large">
+              <strong>{{ selected.status }}</strong>
+              <span>status</span>
+            </div>
+          </div>
+
+          <section class="detail-section">
+            <h3>Executive summary</h3>
+            <p>{{ selected.results.executive_summary }}</p>
+          </section>
+
+          <section class="detail-section">
+            <h3>Consultant-facing recommendations</h3>
+            <div class="consultant-list">
+              {% for item in selected.results.consultant_recommendations %}
+                <div class="consultant-card">
+                  <div class="consultant-header">
+                    <strong>{{ item.domain }}</strong>
+                    <span class="priority priority-{{ item.priority|lower }}">{{ item.priority }} priority</span>
+                  </div>
+                  <p><strong>Recommended engagement focus:</strong> {{ item.engagement_play }}</p>
+                  <ul>
+                    {% for action in item.consultant_actions %}
+                      <li>{{ action }}</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <h3>Domain heatmap</h3>
+            <div class="domain-table">
+              {% for domain in selected.results.domain_results %}
+                <div class="domain-row">
+                  <div>
+                    <strong>{{ domain.title }}</strong>
+                    <div class="record-meta">{{ domain.focus }}</div>
+                  </div>
+                  <div class="score-pill">{{ '%.2f'|format(domain.average) }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <h3>Institution context</h3>
+            <div class="context-readout">
+              <div><strong>Type:</strong> {{ selected.payload.context.institutionType or 'Not provided' }}</div>
+              <div><strong>Enrollment:</strong> {{ selected.payload.context.enrollmentSize or 'Not provided' }}</div>
+              <div><strong>Decentralization:</strong> {{ selected.payload.context.decentralization or 'Not provided' }}</div>
+              <div><strong>CRM landscape:</strong> {{ selected.payload.context.crmLandscape or 'Not provided' }}</div>
+              <div><strong>Strategic priorities:</strong> {{ selected.payload.context.strategicPriorities or 'Not provided' }}</div>
+            </div>
+          </section>
+        {% else %}
+          <div class="empty-state">Select an assessment record to view details.</div>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+</main>
+{% endblock %}

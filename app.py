@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from flask import Flask, abort, jsonify, render_template, request, send_file, url_for
 from reportlab.graphics.charts.piecharts import Pie
@@ -509,6 +510,20 @@ def report_chrome(canvas, doc):
     canvas.restoreState()
 
 
+def pdf_safe(text):
+    if text is None:
+        return "—"
+    return escape(str(text)).replace("\n", "<br/>")
+
+
+def pdf_paragraph(text, style):
+    return Paragraph(pdf_safe(text), style)
+
+
+def pdf_bullet(text, style):
+    return Paragraph(f"• {pdf_safe(text)}", style)
+
+
 def build_metric_cards(results, styles):
     strongest = max(results["domain_results"], key=lambda item: item["average"])
     top_gap = min(results["domain_results"], key=lambda item: item["average"])
@@ -653,8 +668,15 @@ def heatmap_text_color(score):
     return colors.HexColor("#1F6C49")
 
 
-def build_heatmap_table(domain_results):
-    rows = [["Domain", "Score", "Maturity Signal", "Budget", "Effort", "Recommended Action"]]
+def build_heatmap_table(domain_results, styles):
+    rows = [[
+        Paragraph("Domain", styles["TableHead"]),
+        Paragraph("Score", styles["TableHead"]),
+        Paragraph("Maturity Signal", styles["TableHead"]),
+        Paragraph("Budget", styles["TableHead"]),
+        Paragraph("Effort", styles["TableHead"]),
+        Paragraph("Recommended Action", styles["TableHead"]),
+    ]]
     ranked = sorted(domain_results, key=lambda item: item["average"])
     for item in ranked:
         maturity_signal = "Needs immediate stabilization" if item["average"] < 2.6 else "Build toward integration" if item["average"] < 3.8 else "Scale and optimize"
@@ -664,21 +686,18 @@ def build_heatmap_table(domain_results):
         elif item["phase"] == "long":
             phase_name = "twenty_four"
         budget, effort = budget_effort_for_item(item, phase_name)
+        signal_hex = "#A32035" if item["average"] < 2.6 else "#8C6200" if item["average"] < 3.8 else "#1F6C49"
         rows.append([
-            chart_domain_label(item),
-            f"{item['average']:.2f}",
-            maturity_signal,
-            budget,
-            effort,
-            truncate_text(item["recommendations"][item["phase"]], 56),
+            pdf_paragraph(chart_domain_label(item), styles["TableCell"]),
+            Paragraph(f"<font color='{signal_hex}'><b>{item['average']:.2f}</b></font>", styles["TableCellCenter"]),
+            Paragraph(f"<font color='{signal_hex}'><b>{pdf_safe(maturity_signal)}</b></font>", styles["TableCell"]),
+            pdf_paragraph(budget, styles["TableCellCenter"]),
+            pdf_paragraph(effort, styles["TableCellCenter"]),
+            pdf_paragraph(item["recommendations"][item["phase"]], styles["TableCell"]),
         ])
-    table = Table(rows, colWidths=[1.45 * inch, 0.55 * inch, 1.15 * inch, 0.72 * inch, 0.82 * inch, 2.06 * inch])
+    table = Table(rows, colWidths=[1.34 * inch, 0.56 * inch, 1.18 * inch, 0.76 * inch, 0.84 * inch, 2.58 * inch], repeatRows=1)
     style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(BRAND["navy"])),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.1),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#C8D8E8")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
@@ -687,13 +706,7 @@ def build_heatmap_table(domain_results):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]
     for idx, item in enumerate(ranked, start=1):
-        fill = heatmap_fill(item["average"])
-        txt = heatmap_text_color(item["average"])
-        style_cmds.extend([
-            ("BACKGROUND", (0, idx), (-1, idx), fill),
-            ("TEXTCOLOR", (1, idx), (2, idx), txt),
-            ("FONTNAME", (1, idx), (2, idx), "Helvetica-Bold"),
-        ])
+        style_cmds.append(("BACKGROUND", (0, idx), (-1, idx), heatmap_fill(item["average"])))
     table.setStyle(TableStyle(style_cmds))
     return table
 
@@ -762,22 +775,18 @@ def budget_effort_for_item(item, phase_name):
 
 def build_budget_effort_legend(styles):
     legend_rows = [
-        ["Indicator", "Meaning"],
-        ["Low", "Operating-model, governance, training, or policy work with limited technology spend."],
-        ["Low–Medium", "Targeted workflow changes, enablement, and selective configuration effort."],
-        ["Medium", "Cross-functional process redesign, integrations, or moderate platform investment."],
-        ["Medium–High", "Significant design, integration, data remediation, or multi-team delivery effort."],
-        ["High", "Enterprise-scale transformation, platform modernization, or major data/AI investment."],
+        [Paragraph("Indicator", styles["TableHead"]), Paragraph("Meaning", styles["TableHead"])],
+        [pdf_paragraph("Low", styles["TableLabel"]), pdf_paragraph("Operating-model, governance, training, or policy work with limited technology spend.", styles["TableCell"])],
+        [pdf_paragraph("Low–Medium", styles["TableLabel"]), pdf_paragraph("Targeted workflow changes, enablement, and selective configuration effort.", styles["TableCell"])],
+        [pdf_paragraph("Medium", styles["TableLabel"]), pdf_paragraph("Cross-functional process redesign, integrations, or moderate platform investment.", styles["TableCell"])],
+        [pdf_paragraph("Medium–High", styles["TableLabel"]), pdf_paragraph("Significant design, integration, data remediation, or multi-team delivery effort.", styles["TableCell"])],
+        [pdf_paragraph("High", styles["TableLabel"]), pdf_paragraph("Enterprise-scale transformation, platform modernization, or major data/AI investment.", styles["TableCell"])],
     ]
-    legend = Table(legend_rows, colWidths=[1.0 * inch, 5.15 * inch])
+    legend = Table(legend_rows, colWidths=[1.05 * inch, 6.01 * inch], repeatRows=1)
     legend.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(BRAND["primary"])),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7.8),
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#C8D8E8")),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FBFE")]),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -791,21 +800,26 @@ def build_budget_effort_legend(styles):
     return legend
 
 
-def build_roadmap_page(title, phase_name, items, styles):
+def build_roadmap_page(title, phase_name, items, styles, include_legend=False):
     elements = [
         Paragraph(title, styles["HeadingBlue"]),
         Paragraph(roadmap_intro(phase_name), styles["BodySmall"]),
         Paragraph("Budget and effort indicators are directional planning signals intended to support client prioritization conversations rather than replace formal business cases.", styles["BodyTiny"]),
     ]
+    if include_legend:
+        elements.append(Spacer(1, 0.06 * inch))
+        elements.append(build_budget_effort_legend(styles))
+        elements.append(Spacer(1, 0.10 * inch))
     for item in items:
         subtitle = "Quick win" if phase_name == "quick" else "12-month move" if phase_name == "twelve" else "24-month move"
+        rec_key = "quick" if phase_name == "quick" else "mid" if phase_name == "twelve" else "long"
         budget, effort = budget_effort_for_item(item, phase_name)
         indicator_table = Table(
             [[
-                Paragraph(f"<b>Budget indicator</b><br/>{budget}", styles["BodySmall"]),
-                Paragraph(f"<b>Effort indicator</b><br/>{effort}", styles["BodySmall"]),
+                Paragraph(f"<b>Budget indicator</b><br/>{pdf_safe(budget)}", styles["IndicatorText"]),
+                Paragraph(f"<b>Effort indicator</b><br/>{pdf_safe(effort)}", styles["IndicatorText"]),
             ]],
-            colWidths=[2.95 * inch, 2.95 * inch],
+            colWidths=[3.0 * inch, 3.0 * inch],
         )
         indicator_table.setStyle(
             TableStyle(
@@ -822,18 +836,16 @@ def build_roadmap_page(title, phase_name, items, styles):
                 ]
             )
         )
-        block = Table(
-            [[
-                Paragraph(
-                    f"<b>{chart_domain_label(item)}</b> · current score {item['average']:.2f}<br/>"
-                    f"<font color='{BRAND['primary']}'><b>{subtitle} objective:</b></font> {truncate_text(item['weak_signal'], 140)}<br/>"
-                    f"<b>Recommended initiative:</b> {truncate_text(item['recommendations']['quick' if phase_name == 'quick' else 'mid' if phase_name == 'twelve' else 'long'], 190)}<br/>"
-                    f"<b>Consulting support:</b><br/>• {truncate_text(item['consultant_actions'][0], 135)}<br/>• {truncate_text(item['consultant_actions'][1], 135)}<br/>• {truncate_text(item['consultant_actions'][2], 135)}",
-                    styles["BodySmall"],
-                )
-            ], [indicator_table]],
-            colWidths=[6.15 * inch],
-        )
+        content_rows = [
+            [Paragraph(f"<b>{pdf_safe(chart_domain_label(item))}</b> · current score {item['average']:.2f}", styles["CardBody"])],
+            [Paragraph(f"<font color='{BRAND['primary']}'><b>{subtitle} objective</b></font> {pdf_safe(item['weak_signal'])}", styles["CardBody"])],
+            [Paragraph(f"<b>Recommended initiative</b> {pdf_safe(item['recommendations'][rec_key])}", styles["CardBody"])],
+            [Paragraph("<b>Consulting support</b>", styles["CardBody"])],
+        ]
+        for action in item["consultant_actions"][:3]:
+            content_rows.append([pdf_bullet(action, styles["BulletSmall"])])
+        content_rows.append([indicator_table])
+        block = Table(content_rows, colWidths=[6.1 * inch], splitByRow=1)
         block.setStyle(
             TableStyle(
                 [
@@ -842,14 +854,13 @@ def build_roadmap_page(title, phase_name, items, styles):
                     ("LEFTPADDING", (0, 0), (-1, -1), 10),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                     ("TOPPADDING", (0, 0), (-1, -1), 8),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ]
             )
         )
         elements.append(block)
         elements.append(Spacer(1, 0.10 * inch))
-    elements.append(Spacer(1, 0.04 * inch))
-    elements.append(build_budget_effort_legend(styles))
     return elements
 
 
@@ -972,9 +983,16 @@ def download_report(token):
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="TitleNavy", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=20, textColor=colors.HexColor(BRAND["navy"]), alignment=TA_LEFT, leading=23, spaceAfter=8))
     styles.add(ParagraphStyle(name="HeadingBlue", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12.5, textColor=colors.HexColor(BRAND["primary"]), leading=14, spaceAfter=6, spaceBefore=6))
-    styles.add(ParagraphStyle(name="BodySmall", parent=styles["BodyText"], fontName="Helvetica", fontSize=9.2, leading=12.5, textColor=colors.HexColor(BRAND["navy"]), spaceAfter=6))
-    styles.add(ParagraphStyle(name="BodyTiny", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.1, leading=10.5, textColor=colors.HexColor("#5B748B"), spaceAfter=4))
-    styles.add(ParagraphStyle(name="CardMetric", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, alignment=TA_CENTER, leading=10.4, textColor=colors.white))
+    styles.add(ParagraphStyle(name="BodySmall", parent=styles["BodyText"], fontName="Helvetica", fontSize=9.0, leading=12.0, textColor=colors.HexColor(BRAND["navy"]), spaceAfter=6, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="BodyTiny", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.0, leading=10.0, textColor=colors.HexColor("#5B748B"), spaceAfter=4, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="CardMetric", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, alignment=TA_CENTER, leading=10.2, textColor=colors.white, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="TableHead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=7.8, leading=9.0, textColor=colors.white, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="TableCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=7.7, leading=9.5, textColor=colors.HexColor(BRAND["navy"]), wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="TableCellCenter", parent=styles["TableCell"], alignment=TA_CENTER))
+    styles.add(ParagraphStyle(name="TableLabel", parent=styles["TableCell"], fontName="Helvetica-Bold"))
+    styles.add(ParagraphStyle(name="CardBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.7, leading=11.0, textColor=colors.HexColor(BRAND["navy"]), spaceAfter=2, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="BulletSmall", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.4, leading=10.4, leftIndent=10, firstLineIndent=-6, textColor=colors.HexColor(BRAND["navy"]), spaceAfter=2, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="IndicatorText", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.1, textColor=colors.HexColor(BRAND["navy"]), wordWrap="CJK"))
 
     story = []
     title_table_data = []
@@ -1007,11 +1025,11 @@ def download_report(token):
 
     context_table = Table(
         [
-            ["Institution", context.get("institutionName", "Not provided"), "Type", context.get("institutionType", "Not provided")],
-            ["Enrollment", context.get("enrollmentSize", "Not provided"), "Decentralization", context.get("decentralization", "Not provided")],
-            ["CRM landscape", truncate_text(context.get("crmLandscape", "Not provided"), 74), "Strategic priorities", truncate_text(context.get("strategicPriorities", "Not provided"), 74)],
+            [pdf_paragraph("Institution", styles["TableLabel"]), pdf_paragraph(context.get("institutionName", "Not provided"), styles["TableCell"]), pdf_paragraph("Type", styles["TableLabel"]), pdf_paragraph(context.get("institutionType", "Not provided"), styles["TableCell"])],
+            [pdf_paragraph("Enrollment", styles["TableLabel"]), pdf_paragraph(context.get("enrollmentSize", "Not provided"), styles["TableCell"]), pdf_paragraph("Decentralization", styles["TableLabel"]), pdf_paragraph(context.get("decentralization", "Not provided"), styles["TableCell"])],
+            [pdf_paragraph("CRM landscape", styles["TableLabel"]), pdf_paragraph(context.get("crmLandscape", "Not provided"), styles["TableCell"]), pdf_paragraph("Strategic priorities", styles["TableLabel"]), pdf_paragraph(context.get("strategicPriorities", "Not provided"), styles["TableCell"])],
         ],
-        colWidths=[1.05 * inch, 2.05 * inch, 1.2 * inch, 2.0 * inch],
+        colWidths=[1.0 * inch, 2.25 * inch, 1.15 * inch, 2.86 * inch],
     )
     context_table.setStyle(
         TableStyle(
@@ -1062,15 +1080,20 @@ def download_report(token):
     story.append(build_opportunity_chart(results["low_domains"]))
     story.append(Spacer(1, 0.16 * inch))
 
-    domain_rows = [["Domain", "Weight", "Score", "Recommended next move"]]
+    domain_rows = [[
+        Paragraph("Domain", styles["TableHead"]),
+        Paragraph("Weight", styles["TableHead"]),
+        Paragraph("Score", styles["TableHead"]),
+        Paragraph("Recommended next move", styles["TableHead"]),
+    ]]
     for domain in sorted(results["domain_results"], key=lambda item: item["average"]):
         domain_rows.append([
-            domain["title"],
-            f"{domain['weight']}%",
-            f"{domain['average']:.2f}",
-            truncate_text(domain["recommendations"][domain["phase"]], 92),
+            pdf_paragraph(domain["title"], styles["TableCell"]),
+            pdf_paragraph(f"{domain['weight']}%", styles["TableCellCenter"]),
+            pdf_paragraph(f"{domain['average']:.2f}", styles["TableCellCenter"]),
+            pdf_paragraph(domain["recommendations"][domain["phase"]], styles["TableCell"]),
         ])
-    domain_table = Table(domain_rows, colWidths=[2.18 * inch, 0.6 * inch, 0.62 * inch, 2.8 * inch])
+    domain_table = Table(domain_rows, colWidths=[1.6 * inch, 0.58 * inch, 0.58 * inch, 4.5 * inch], repeatRows=1)
     domain_table.setStyle(
         TableStyle(
             [
@@ -1094,21 +1117,18 @@ def download_report(token):
     story.append(Spacer(1, 0.12 * inch))
     story.append(Paragraph("Heatmap Prioritization Table", styles["HeadingBlue"]))
     story.append(Paragraph("This heatmap uses red, yellow, and green maturity coloring to highlight stabilization priorities, build priorities, and scale opportunities across the CRM capability stack.", styles["BodySmall"]))
-    story.append(build_heatmap_table(results["domain_results"]))
+    story.append(build_heatmap_table(results["domain_results"], styles))
     story.append(Spacer(1, 0.14 * inch))
 
     story.append(Paragraph("Consultant-Facing Recommendations", styles["HeadingBlue"]))
     for item in results["consultant_recommendations"]:
-        recommendation_box = Table(
-            [[
-                Paragraph(
-                    f"<b>{item['domain']}</b><br/>Score {item['score']:.2f} · {item['priority']} priority<br/>{truncate_text(item['engagement_play'], 130)}<br/>"
-                    + "<br/>".join([f"• {truncate_text(action, 120)}" for action in item["consultant_actions"]]),
-                    styles["BodySmall"],
-                )
-            ]],
-            colWidths=[6.15 * inch],
-        )
+        recommendation_rows = [
+            [Paragraph(f"<b>{pdf_safe(item['domain'])}</b> · Score {item['score']:.2f} · {pdf_safe(item['priority'])} priority", styles["CardBody"])],
+            [Paragraph(f"<b>Engagement play</b> {pdf_safe(item['engagement_play'])}", styles["CardBody"])],
+        ]
+        for action in item["consultant_actions"]:
+            recommendation_rows.append([pdf_bullet(action, styles["BulletSmall"])])
+        recommendation_box = Table(recommendation_rows, colWidths=[6.15 * inch], splitByRow=1)
         recommendation_box.setStyle(
             TableStyle(
                 [
@@ -1125,8 +1145,7 @@ def download_report(token):
         story.append(Spacer(1, 0.08 * inch))
 
     roadmap_groups = build_roadmap_groups(results["domain_results"])
-    story.append(PageBreak())
-    story.extend(build_roadmap_page("Client Roadmap — Quick Wins", "quick", roadmap_groups["quick"], styles))
+    story.extend(build_roadmap_page("Client Roadmap — Quick Wins", "quick", roadmap_groups["quick"], styles, include_legend=True))
     story.append(PageBreak())
     story.extend(build_roadmap_page("Client Roadmap — 12-Month Plan", "twelve", roadmap_groups["twelve"], styles))
     story.append(PageBreak())
